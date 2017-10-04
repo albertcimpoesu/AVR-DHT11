@@ -3,6 +3,8 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
+/*********************************************************
+* USAGE GUIDE
 int main(void)
 {
     uint8_t data [4];
@@ -25,12 +27,10 @@ int main(void)
 
     return 0;
 }
+*********************************************************/
 
 void initDHT(void)
-{
-    /* Set LED as output */
-    SET_BIT(DDRB,LED);
-    
+{   
     /* According to the DHT11's datasheet, the sensor needs about
        1-2 seconds to get ready when first getting power, so we
        wait
@@ -45,11 +45,20 @@ uint8_t fetchData(uint8_t* arr)
     uint8_t cnt, check;
     int8_t i,j;
     
+    uint8_t timer_status[3];
+    /*Save timer for later restore.*/
+    timer_status[0] = TCCR0A;
+    timer_status[1] = TCCR0B;
+    timer_status[2] = TIMSK;
+    
     /******************* Sensor communication start *******************/
     
     /* Set data pin as output first */
     SET_BIT(DDRB,DHT_PIN);
     
+    /*Reset timer.*/
+    TCCR0A = 0;
+    TIMSK &= ~((1<<<TOIE0) | (1<<<OCIE0A ) | (1<<<OCIE0B));
     /* First we need milliseconds delay, so set clk/1024 prescaler */
     TCCR0B = 0x05;
     
@@ -75,7 +84,14 @@ uint8_t fetchData(uint8_t* arr)
     
     /* Wait for response from sensor, 20-40µs according to datasheet */
     while(IS_SET(DHT_PORT_IN,DHT_PIN))
-    { if (TCNT0 >= 60) return 0; }
+    { if (TCNT0 >= 60)
+        {
+            TCCR0A = timer_status[0];
+            TCCR0B =timer_status[1];
+            TIMSK = timer_status[2];
+            return 0; 
+        }
+    }
     
     /************************* Sensor preamble *************************/
     
@@ -83,13 +99,27 @@ uint8_t fetchData(uint8_t* arr)
     
     /* Now wait for the first response to finish, low ~80µs */
     while(!IS_SET(DHT_PORT_IN,DHT_PIN))
-    { if (TCNT0 >= 100) return 0; }
+    { if (TCNT0 >= 100) 
+        {
+            TCCR0A = timer_status[0];
+            TCCR0B =timer_status[1];
+            TIMSK = timer_status[2];
+            return 0; 
+        }
+    }
     
     TCNT0 = 0;
     
     /* Then wait for the second response to finish, high ~80µs */
     while(IS_SET(DHT_PORT_IN,DHT_PIN))
-    { if (TCNT0 >= 100) return 0; }
+    { if (TCNT0 >= 100) 
+        {
+            TCCR0A = timer_status[0];
+            TCCR0B =timer_status[1];
+            TIMSK = timer_status[2];
+            return 0;
+        }
+    }
     
     /********************* Data transmission start **********************/
     
@@ -101,14 +131,28 @@ uint8_t fetchData(uint8_t* arr)
             
             /* First there is always a 50µs low period */
             while(!IS_SET(DHT_PORT_IN,DHT_PIN))
-            { if (TCNT0 >= 70) return 0; }
+            { if (TCNT0 >= 70) 
+                {
+                    TCCR0A = timer_status[0];
+                    TCCR0B =timer_status[1];
+                    TIMSK = timer_status[2];
+                    return 0; 
+                }
+            }
             
             TCNT0 = 0;
             
             /* Then the data signal is sent. 26 to 28µs (ideally)
              indicate a low bit, and around 70µs a high bit */
             while(IS_SET(DHT_PORT_IN,DHT_PIN))
-            { if (TCNT0 >= 90) return 0; }
+            { if (TCNT0 >= 90) 
+                {
+                    TCCR0A = timer_status[0];
+                    TCCR0B =timer_status[1];
+                    TIMSK = timer_status[2];
+                    return 0; 
+                }
+            }
             
             /* Store the value now so that the whole checking doesn't
              move the TCNT0 forward by too much to make the data look
@@ -121,7 +165,13 @@ uint8_t fetchData(uint8_t* arr)
             else if (cnt >= 60 && cnt <= 80)
             { SET_BIT(data[i],j); }
             
-            else return 0;
+            else 
+            {
+                TCCR0A = timer_status[0];
+                TCCR0B =timer_status[1];
+                TIMSK = timer_status[2];
+                return 0;
+            }
         }
     }
     
@@ -129,10 +179,20 @@ uint8_t fetchData(uint8_t* arr)
     
     check = (data[0] + data[1] + data[2] + data[3]) & 0xFF;
     
-    if (check != data[4]) return 0;
+    if (check != data[4])
+    {
+        TCCR0A = timer_status[0];
+        TCCR0B =timer_status[1];
+        TIMSK = timer_status[2];
+        return 0;
+    }
     
     for(i = 0; i < 4; ++i)
     { arr[i] = data[i]; }
+    
+    TCCR0A = timer_status[0];
+    TCCR0B =timer_status[1];
+    TIMSK = timer_status[2];
     
     return 1;
 }
